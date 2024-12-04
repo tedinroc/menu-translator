@@ -6,3 +6,4 @@ requests==2.31.0
 gunicorn==21.2.0
 pytesseract==0.3.10
 Werkzeug==2.3.7
+opencc-python-reimplemented==0.1.7

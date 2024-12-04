@@ -174,6 +174,19 @@ def translate():
             lines = [line.strip() for line in translation.split('\n') if line.strip()]
             logger.debug(f"Split lines: {lines}")
             
+            # Handle Chinese variants
+            target_language = request.json.get('target_language', 'English')
+            if target_language in ['Traditional Chinese', 'Simplified Chinese']:
+                try:
+                    from opencc import OpenCC
+                    cc = OpenCC('s2t' if target_language == 'Traditional Chinese' else 't2s')
+                    lines = [cc.convert(line) for line in lines]
+                    logger.debug(f"Converted Chinese text: {lines}")
+                except ImportError:
+                    logger.warning("OpenCC not installed, skipping Chinese conversion")
+                except Exception as e:
+                    logger.error(f"Error converting Chinese text: {str(e)}")
+            
             # Process each line to ensure it has the correct format
             formatted_lines = []
             for line in lines:
