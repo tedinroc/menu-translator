@@ -86,6 +86,62 @@
             background-size: 5px 5px, 5px 5px;
             background-repeat: no-repeat;
         }
+        .error-message {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .retry-button {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .retry-button::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateX(-100%);
+            transition: transform 0.3s ease-in-out;
+        }
+
+        .retry-button:hover::after {
+            transform: translateX(0);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 改進載入中狀態的樣式 */
+        #loading {
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+        }
+
+        /* 添加過渡效果 */
+        .transition-all {
+            transition-property: all;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            transition-duration: 300ms;
+        }
     </style>
 </head>
 <body class="p-4">
@@ -153,10 +209,13 @@
         </div>
     </div>
 
-    <div class="loading">
-        <div class="text-center">
+    <div id="loading" class="fixed inset-0 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl flex flex-col items-center">
             <div class="loading-spinner mb-4"></div>
-            <p class="text-gray-600 font-medium">Translating...</p>
+            <div id="loadingText" class="text-gray-700">Processing image...</div>
+            <div id="retryCountdown" class="text-sm text-gray-500 mt-2 hidden">
+                Retrying in <span id="countdownSeconds">60</span> seconds...
+            </div>
         </div>
     </div>
 
@@ -213,7 +272,8 @@
         // Take new photo
         function takeNewPhoto() {
             resetCamera();
-            result.classList.add('hidden');
+            // Don't hide results when taking new photo
+            // result.classList.add('hidden');
         }
 
         // Capture image
@@ -247,9 +307,12 @@
         async function processImage(imageData) {
             console.log('Starting image processing');
             loading.style.display = 'flex';
+            updateLoadingText('Processing image...');
             
             try {
                 console.log('Sending request to server');
+                updateLoadingText('Sending to server...');
+                
                 const response = await fetch('/translate', {
                     method: 'POST',
                     headers: {
@@ -262,62 +325,173 @@
                 });
 
                 console.log('Server response received');
+                updateLoadingText('Processing response...');
+                
                 const data = await response.json();
                 console.log('Response data:', data);
                 
                 if (data.error) {
                     console.error('Server returned error:', data.error);
-                    throw new Error(data.error);
-                }
-
-                // Parse and display translation results
-                console.log('Raw translation:', data.translation);
-                const translations = data.translation.split('\n').filter(line => line.trim());
-                console.log('Split translations:', translations);
-                
-                if (translations.length === 0) {
-                    console.warn('No translations found');
-                    translationResults.innerHTML = `
-                        <div class="text-center text-gray-500 py-4">
-                            No translations found. Please try again with a clearer image.
-                        </div>
-                    `;
-                    result.classList.remove('hidden');
+                    if (data.error_type === 'rate_limit' || data.error_type === 'quota_exceeded') {
+                        handleRateLimitError(data.error);
+                    } else {
+                        throw new Error(data.error);
+                    }
                     return;
                 }
 
-                translationResults.innerHTML = translations.map(translation => {
-                    console.log('Processing translation line:', translation);
-                    const [original, translated] = translation.split(':').map(t => t.trim());
-                    
-                    if (!original || !translated) {
-                        console.warn('Invalid translation format:', translation);
-                        return '';
-                    }
-                    
-                    console.log('Formatted translation:', { original, translated });
-                    return `
-                        <div class="translation-item bg-white bg-opacity-50 rounded-lg p-4 hover:bg-opacity-70 transition-all duration-300">
-                            <div class="grid grid-cols-2 gap-4">
-                                <div class="original-text">
-                                    <p class="font-medium text-gray-800">${original}</p>
-                                </div>
-                                <div class="translated-text">
-                                    <p class="text-blue-600">${translated}</p>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
+                // 處理翻譯結果
+                displayTranslationResults(data.translation);
 
-                console.log('Translation display complete');
-                result.classList.remove('hidden');
             } catch (error) {
                 console.error('Error during translation:', error);
-                alert('Error: ' + error.message);
+                handleError(error);
             } finally {
                 loading.style.display = 'none';
             }
+        }
+
+        // 顯示翻譯結果
+        function displayTranslationResults(translation) {
+            const translations = translation.split('\n').filter(line => line.trim());
+            
+            if (translations.length === 0) {
+                showNoTranslationsMessage();
+                return;
+            }
+
+            const resultsHTML = translations.map(createTranslationItem).join('');
+            translationResults.innerHTML = resultsHTML;
+            result.classList.remove('hidden');
+        }
+
+        // 創建翻譯項目
+        function createTranslationItem(translation) {
+            const [original, translated] = translation.split(':').map(t => t.trim());
+            
+            if (!original || !translated) {
+                console.warn('Invalid translation format:', translation);
+                return '';
+            }
+            
+            return `
+                <div class="translation-item bg-white bg-opacity-50 rounded-lg p-4 hover:bg-opacity-70 transition-all duration-300">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="original-text">
+                            <p class="font-medium text-gray-800">${original}</p>
+                        </div>
+                        <div class="translated-text">
+                            <p class="text-blue-600">${translated}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 顯示無翻譯結果訊息
+        function showNoTranslationsMessage() {
+            translationResults.innerHTML = `
+                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-yellow-700">
+                                No translations found. Please try again with a clearer image.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            result.classList.remove('hidden');
+        }
+
+        // 處理 API 限制錯誤
+        function handleRateLimitError(error) {
+            const errorContainer = document.createElement('div');
+            errorContainer.className = 'error-message bg-red-50 border-l-4 border-red-400 p-4 rounded-lg mb-4';
+            errorContainer.innerHTML = `
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm text-red-700">${error}</p>
+                    </div>
+                </div>
+                <button onclick="retryTranslation()" class="retry-button mt-4 w-full px-6 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors duration-300">
+                    Try Again Later
+                </button>
+            `;
+            
+            translationResults.innerHTML = '';
+            translationResults.appendChild(errorContainer);
+            result.classList.remove('hidden');
+        }
+
+        // 改進的重試功能
+        async function retryTranslation() {
+            const retryButton = document.querySelector('.retry-button');
+            if (retryButton) {
+                retryButton.disabled = true;
+            }
+
+            showRetryCountdown(true);
+            let secondsLeft = 60;
+
+            const countdownInterval = setInterval(() => {
+                secondsLeft--;
+                document.getElementById('countdownSeconds').textContent = secondsLeft;
+                
+                if (retryButton) {
+                    retryButton.textContent = `Try Again (${secondsLeft}s)`;
+                }
+
+                if (secondsLeft <= 0) {
+                    clearInterval(countdownInterval);
+                    showRetryCountdown(false);
+                    
+                    if (retryButton) {
+                        retryButton.disabled = false;
+                        retryButton.textContent = 'Try Again';
+                    }
+
+                    if (preview.src) {
+                        processImage(preview.src);
+                    }
+                }
+            }, 1000);
+        }
+
+        // 更新載入中的文字
+        function updateLoadingText(text) {
+            document.getElementById('loadingText').textContent = text;
+        }
+
+        // 顯示重試倒數
+        function showRetryCountdown(show) {
+            const countdown = document.getElementById('retryCountdown');
+            countdown.classList.toggle('hidden', !show);
+        }
+
+        // Reset camera view
+        function resetCamera() {
+            video.classList.remove('hidden');
+            preview.classList.add('hidden');
+            actionButtons.classList.add('hidden');
+            cameraSection.classList.remove('hidden');
+            initCamera();
+        }
+
+        // Take new photo
+        function takeNewPhoto() {
+            resetCamera();
+            // 保留之前的翻譯結果
         }
 
         // Event listeners for new buttons

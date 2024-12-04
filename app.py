@@ -112,57 +112,78 @@ def translate():
         try:
             logger.info("Calling OpenAI API")
             # Call OpenAI API for translation using GPT-4O
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": """You are a professional menu translator. Your task is to:
-                        1. Carefully examine the menu image
-                        2. Extract all visible text items
-                        3. Translate each item accurately
-                        4. Format each translation as:
-                           [Original Text] -> [Translation]
-                        
-                        Important rules:
-                        - Only translate text you can clearly see
-                        - Keep numbers and special characters unchanged
-                        - Skip any text you're unsure about
-                        - If you can't see any text clearly, explain why
-                        - If the image is unclear, suggest how to improve it
-                        
-                        Example format:
-                        Sushi Roll -> 寿司卷
-                        Miso Soup -> 味噌汤
-                        """
-                    },
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"Please examine this menu image carefully and translate all visible text to {target_language}. If you can't read the text clearly, please explain why and suggest improvements."
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{img_str}"
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": """You are a professional menu translator. Your task is to:
+                            1. Carefully examine the menu image
+                            2. Extract all visible text items
+                            3. Translate each item accurately
+                            4. Format each translation as:
+                               [Original Text] -> [Translation]
+                            
+                            Important rules:
+                            - Only translate text you can clearly see
+                            - Keep numbers and special characters unchanged
+                            - Skip any text you're unsure about
+                            - If you can't see any text clearly, explain why
+                            - If the image is unclear, suggest how to improve it
+                            
+                            Example format:
+                            Sushi Roll -> 寿司卷
+                            Miso Soup -> 味噌汤
+                            """
+                        },
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": f"Please examine this menu image carefully and translate all visible text to {target_language}. If you can't read the text clearly, please explain why and suggest improvements."
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{img_str}"
+                                    }
                                 }
-                            }
-                        ]
-                    }
-                ],
-                temperature=0.3,
-                max_tokens=1000
-            )
+                            ]
+                        }
+                    ],
+                    temperature=0.3,
+                    max_tokens=1000
+                )
+            except Exception as e:
+                error_msg = str(e).lower()
+                if 'rate limit' in error_msg:
+                    logger.error("Rate limit exceeded")
+                    return jsonify({
+                        'error': 'Service is temporarily unavailable due to high demand. Please try again in a few minutes.',
+                        'error_type': 'rate_limit'
+                    }), 429
+                elif 'quota' in error_msg:
+                    logger.error("API quota exceeded")
+                    return jsonify({
+                        'error': 'Daily translation limit reached. Please try again tomorrow.',
+                        'error_type': 'quota_exceeded'
+                    }), 429
+                else:
+                    logger.error(f"OpenAI API error: {str(e)}")
+                    return jsonify({
+                        'error': 'An error occurred while processing your request. Please try again.',
+                        'error_type': 'api_error'
+                    }), 500
             logger.info("OpenAI API call successful")
             
             # Log the raw response
             logger.debug(f"Raw API response: {response}")
             
         except Exception as e:
-            logger.error(f"OpenAI API error: {str(e)}")
-            return jsonify({'error': f'OpenAI API error: {str(e)}'}), 500
+            logger.error(f"Error processing API response: {str(e)}")
+            return jsonify({'error': f'Error processing API response: {str(e)}'}), 500
 
         try:
             # Get the translation result
