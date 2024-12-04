@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Menu Translator</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+        }
+        .camera-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        #video {
+            width: 100%;
+            height: auto;
+            border-radius: 20px;
+        }
+        #canvas {
+            display: none;
+        }
+        .btn {
+            transition: all 0.3s ease;
+            transform: translateY(0);
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        .translation-item {
+            transition: all 0.3s ease;
+        }
+        .translation-item:hover {
+            transform: translateX(5px);
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+    </style>
+</head>
+<body class="p-4">
+    <div class="container mx-auto max-w-4xl">
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">Menu Translator</h1>
+            <p class="text-gray-600">Translate menu items instantly with AI</p>
+        </div>
+        
+        <div class="glass-effect rounded-2xl p-6 mb-6">
+            <div class="mb-4">
+                <select id="targetLanguage" class="w-full p-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all duration-300 bg-white bg-opacity-50">
+                    <option value="English">English</option>
+                    <option value="Chinese">中文</option>
+                    <option value="Japanese">日本語</option>
+                    <option value="Korean">한국어</option>
+                    <option value="Spanish">Español</option>
+                    <option value="French">Français</option>
+                    <option value="German">Deutsch</option>
+                </select>
+            </div>
+
+            <div class="camera-container mb-4">
+                <video id="video" class="hidden"></video>
+                <canvas id="canvas"></canvas>
+                <img id="preview" class="w-full h-auto rounded-xl hidden">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <button id="captureBtn" class="btn col-span-1 bg-blue-500 text-white py-3 px-6 rounded-xl hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-50">
+                    Take Photo
+                </button>
+                <label class="btn col-span-1 bg-green-500 text-white py-3 px-6 rounded-xl hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-opacity-50 text-center cursor-pointer">
+                    Upload Image
+                    <input type="file" id="fileInput" class="hidden" accept="image/*">
+                </label>
+            </div>
+        </div>
+
+        <div id="result" class="glass-effect rounded-2xl p-6 hidden">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-800">Translation Results</h2>
+            <div id="translationResults" class="space-y-3">
+                <!-- Translation results will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <div class="loading">
+        <div class="text-center">
+            <div class="loading-spinner mb-4"></div>
+            <p class="text-gray-600">Translating...</p>
+        </div>
+    </div>
+
+    <script>
+        let video = document.getElementById('video');
+        let canvas = document.getElementById('canvas');
+        let preview = document.getElementById('preview');
+        let captureBtn = document.getElementById('captureBtn');
+        let fileInput = document.getElementById('fileInput');
+        let loading = document.querySelector('.loading');
+        let result = document.getElementById('result');
+        let translationResults = document.getElementById('translationResults');
+
+        // Initialize camera
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                video.srcObject = stream;
+                video.play();
+                video.classList.remove('hidden');
+            } catch (err) {
+                console.error('Error accessing camera:', err);
+                captureBtn.textContent = 'Camera not available';
+                captureBtn.disabled = true;
+            }
+        }
+
+        // Capture image
+        captureBtn.addEventListener('click', () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            preview.src = canvas.toDataURL('image/jpeg');
+            video.classList.add('hidden');
+            preview.classList.remove('hidden');
+            processImage(preview.src);
+        });
+
+        // Handle file upload
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    preview.src = e.target.result;
+                    video.classList.add('hidden');
+                    preview.classList.remove('hidden');
+                    processImage(e.target.result);
+                };
+                reader.readAsDataURL(e.target.files[0]);
+            }
+        });
+
+        // Process and send image to server
+        async function processImage(imageData) {
+            console.log('Starting image processing');
+            loading.style.display = 'flex';
+            result.classList.add('hidden');
+            
+            try {
+                console.log('Sending request to server');
+                const response = await fetch('/translate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        image: imageData,
+                        target_language: document.getElementById('targetLanguage').value
+                    })
+                });
+
+                console.log('Server response received');
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (data.error) {
+                    console.error('Server returned error:', data.error);
+                    throw new Error(data.error);
+                }
+
+                // Parse and display translation results
+                console.log('Raw translation:', data.translation);
+                const translations = data.translation.split('\n').filter(line => line.trim());
+                console.log('Split translations:', translations);
+                
+                if (translations.length === 0) {
+                    console.warn('No translations found');
+                    translationResults.innerHTML = `
+                        <div class="text-center text-gray-500 py-4">
+                            No translations found. Please try again with a clearer image.
+                        </div>
+                    `;
+                    result.classList.remove('hidden');
+                    return;
+                }
+
+                translationResults.innerHTML = translations.map(translation => {
+                    console.log('Processing translation line:', translation);
+                    const [original, translated] = translation.split(':').map(t => t.trim());
+                    
+                    if (!original || !translated) {
+                        console.warn('Invalid translation format:', translation);
+                        return '';
+                    }
+                    
+                    console.log('Formatted translation:', { original, translated });
+                    return `
+                        <div class="translation-item bg-white bg-opacity-50 rounded-lg p-4 hover:bg-opacity-70 transition-all duration-300">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="original-text">
+                                    <p class="font-medium text-gray-800">${original}</p>
+                                </div>
+                                <div class="translated-text">
+                                    <p class="text-blue-600">${translated}</p>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                console.log('Translation display complete');
+                result.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error during translation:', error);
+                alert('Error: ' + error.message);
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        // Initialize camera on page load
+        initCamera();
+    </script>
+</body>
+</html>
