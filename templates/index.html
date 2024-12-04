@@ -110,25 +110,43 @@
                 </select>
             </div>
 
-            <div class="camera-container mb-6">
-                <video id="video" autoplay playsinline class="w-full h-auto rounded-2xl"></video>
-                <canvas id="canvas" class="hidden"></canvas>
-                <img id="preview" class="w-full h-auto rounded-2xl hidden">
+            <div id="camera-section" class="space-y-4">
+                <div class="camera-container">
+                    <video id="video" autoplay playsinline class="w-full h-auto rounded-2xl"></video>
+                    <canvas id="canvas" class="hidden"></canvas>
+                    <img id="preview" class="w-full h-auto rounded-2xl hidden">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <button id="captureBtn" class="btn col-span-1 text-white py-3 px-6 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-50 font-medium">
+                        Take Photo
+                    </button>
+                    <label class="btn col-span-1 text-white py-3 px-6 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-50 text-center cursor-pointer font-medium">
+                        Upload Image
+                        <input type="file" id="fileInput" class="hidden" accept="image/*">
+                    </label>
+                </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
-                <button id="captureBtn" class="btn col-span-1 text-white py-3 px-6 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-50 font-medium">
-                    Take Photo
+            <div id="action-buttons" class="grid grid-cols-2 gap-4 hidden">
+                <button id="newPhotoBtn" class="btn col-span-1 text-white py-3 px-6 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-50 font-medium">
+                    Take New Photo
                 </button>
-                <label class="btn col-span-1 text-white py-3 px-6 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-50 text-center cursor-pointer font-medium">
-                    Upload Image
-                    <input type="file" id="fileInput" class="hidden" accept="image/*">
-                </label>
+                <button id="retakeBtn" class="col-span-1 border-2 border-indigo-500 text-indigo-500 py-3 px-6 rounded-xl hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-50 font-medium transition-colors duration-300">
+                    Retake Photo
+                </button>
             </div>
         </div>
 
         <div id="result" class="glass-effect p-8 hidden">
-            <h2 class="text-2xl font-semibold mb-6 text-indigo-900">Translation Results</h2>
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-semibold text-indigo-900">Translation Results</h2>
+                <button id="clearResultsBtn" class="text-gray-500 hover:text-indigo-500 transition-colors duration-300">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
             <div id="translationResults" class="space-y-4">
                 <!-- Translation results will be inserted here -->
             </div>
@@ -151,18 +169,51 @@
         let loading = document.querySelector('.loading');
         let result = document.getElementById('result');
         let translationResults = document.getElementById('translationResults');
+        let actionButtons = document.getElementById('action-buttons');
+        let newPhotoBtn = document.getElementById('newPhotoBtn');
+        let retakeBtn = document.getElementById('retakeBtn');
+        let clearResultsBtn = document.getElementById('clearResultsBtn');
+        let cameraSection = document.getElementById('camera-section');
+        let currentStream = null;
 
         // Initialize camera
         async function initCamera() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                if (currentStream) {
+                    currentStream.getTracks().forEach(track => track.stop());
+                }
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    } 
+                });
+                currentStream = stream;
                 video.srcObject = stream;
-                video.play();
+                await video.play();
+                video.classList.remove('hidden');
+                preview.classList.add('hidden');
             } catch (err) {
                 console.error('Error accessing camera:', err);
                 captureBtn.textContent = 'Camera not available';
                 captureBtn.disabled = true;
             }
+        }
+
+        // Reset camera view
+        function resetCamera() {
+            video.classList.remove('hidden');
+            preview.classList.add('hidden');
+            actionButtons.classList.add('hidden');
+            cameraSection.classList.remove('hidden');
+            initCamera();
+        }
+
+        // Take new photo
+        function takeNewPhoto() {
+            resetCamera();
+            result.classList.add('hidden');
         }
 
         // Capture image
@@ -171,8 +222,9 @@
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
             preview.src = canvas.toDataURL('image/jpeg');
-            video.pause();
+            video.classList.add('hidden');
             preview.classList.remove('hidden');
+            actionButtons.classList.remove('hidden');
             processImage(preview.src);
         });
 
@@ -182,7 +234,9 @@
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     preview.src = e.target.result;
+                    video.classList.add('hidden');
                     preview.classList.remove('hidden');
+                    actionButtons.classList.remove('hidden');
                     processImage(e.target.result);
                 };
                 reader.readAsDataURL(e.target.files[0]);
@@ -193,7 +247,6 @@
         async function processImage(imageData) {
             console.log('Starting image processing');
             loading.style.display = 'flex';
-            result.classList.add('hidden');
             
             try {
                 console.log('Sending request to server');
@@ -267,8 +320,28 @@
             }
         }
 
-        // Initialize camera on page load
-        initCamera();
+        // Event listeners for new buttons
+        newPhotoBtn.addEventListener('click', takeNewPhoto);
+        retakeBtn.addEventListener('click', resetCamera);
+        clearResultsBtn.addEventListener('click', () => {
+            result.classList.add('hidden');
+            translationResults.innerHTML = '';
+        });
+
+        // Target language change handler
+        document.getElementById('targetLanguage').addEventListener('change', () => {
+            localStorage.setItem('selectedLanguage', document.getElementById('targetLanguage').value);
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Restore last selected language
+            const savedLanguage = localStorage.getItem('selectedLanguage');
+            if (savedLanguage) {
+                document.getElementById('targetLanguage').value = savedLanguage;
+            }
+            initCamera();
+        });
     </script>
 </body>
 </html>
