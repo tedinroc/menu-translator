@@ -96,8 +96,8 @@
             </div>
 
             <div class="camera-container mb-4">
-                <video id="video" class="hidden"></video>
-                <canvas id="canvas"></canvas>
+                <video id="video" autoplay playsinline class="w-full h-auto rounded-xl"></video>
+                <canvas id="canvas" class="hidden"></canvas>
                 <img id="preview" class="w-full h-auto rounded-xl hidden">
             </div>
 
@@ -143,7 +143,6 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
                 video.srcObject = stream;
                 video.play();
-                video.classList.remove('hidden');
             } catch (err) {
                 console.error('Error accessing camera:', err);
                 captureBtn.textContent = 'Camera not available';
@@ -157,7 +156,7 @@
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
             preview.src = canvas.toDataURL('image/jpeg');
-            video.classList.add('hidden');
+            video.pause();
             preview.classList.remove('hidden');
             processImage(preview.src);
         });
@@ -168,7 +167,6 @@
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     preview.src = e.target.result;
-                    video.classList.add('hidden');
                     preview.classList.remove('hidden');
                     processImage(e.target.result);
                 };
